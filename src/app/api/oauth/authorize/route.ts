@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "*",
+    },
+  });
+}
+
 /**
  * OAuth 2.0 Authorization Endpoint for Claude / Remote MCP Connectors
- * Supports both direct redirect and interactive Google/PocketMotion approval page
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -11,16 +21,8 @@ export async function GET(req: NextRequest) {
     "https://claude.ai/api/mcp/auth_callback";
   const state = searchParams.get("state") || "";
   const clientId = searchParams.get("client_id") || "pocketmotion-mcp-client";
-  const autoApprove = searchParams.get("approve") === "1";
 
-  const authCode = `pm_code_${Date.now()}`;
-
-  if (autoApprove) {
-    const target = new URL(redirectUri);
-    target.searchParams.set("code", authCode);
-    if (state) target.searchParams.set("state", state);
-    return NextResponse.redirect(target.toString(), 302);
-  }
+  const authCode = `pm_code_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
   const targetUrl = new URL(redirectUri);
   targetUrl.searchParams.set("code", authCode);
@@ -28,106 +30,123 @@ export async function GET(req: NextRequest) {
   const finalRedirect = targetUrl.toString();
 
   const html = `<!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Authorize PocketMotion MCP</title>
+  <title>Authorize PocketMotion MCP for Claude</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: #000000;
       color: #ffffff;
-      font-family: -apple-system, BlinkMacSystemFont, "Inter", monospace, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 20px;
+      padding: 24px;
     }
     .card {
-      background: #080808;
+      background: #0a0a0a;
       border: 1px solid #262626;
-      border-radius: 16px;
-      max-width: 420px;
+      border-radius: 20px;
+      max-width: 440px;
       width: 100%;
-      padding: 28px;
-      box-shadow: 0 24px 48px rgba(0,0,0,0.8);
+      padding: 32px;
+      box-shadow: 0 30px 60px rgba(0,0,0,0.9);
+      text-align: center;
     }
     .brand {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 18px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid #171717;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 20px;
     }
     .dot {
-      width: 12px;
-      height: 12px;
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
       background: #ffffff;
     }
     h1 {
-      font-size: 16px;
-      font-weight: 600;
+      font-size: 18px;
+      font-weight: 700;
       letter-spacing: -0.02em;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: #171717;
+      border: 1px solid #333333;
+      color: #e5e5e5;
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 16px;
     }
     p {
       font-size: 13px;
       color: #a3a3a3;
       line-height: 1.6;
-      margin-bottom: 18px;
-    }
-    .meta {
-      background: #0d0d0d;
-      border: 1px solid #1f1f1f;
-      border-radius: 10px;
-      padding: 12px;
-      font-family: monospace;
-      font-size: 11px;
-      color: #d4d4d4;
-      margin-bottom: 20px;
-      word-break: break-all;
+      margin-bottom: 24px;
     }
     .btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
+      display: block;
       width: 100%;
-      padding: 12px 16px;
-      border-radius: 10px;
+      padding: 14px 20px;
+      border-radius: 12px;
       background: #ffffff;
       color: #000000;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
       text-decoration: none;
-      border: none;
+      transition: all 0.15s ease;
       cursor: pointer;
+      border: none;
     }
     .btn:hover {
       background: #e5e5e5;
+      transform: translateY(-1px);
+    }
+    .btn:active {
+      transform: translateY(0);
+    }
+    .footer {
+      margin-top: 18px;
+      font-size: 11px;
+      color: #525252;
+      font-family: monospace;
     }
   </style>
 </head>
 <body>
   <div class="card">
+    <div class="badge">Model Context Protocol 2.1</div>
     <div class="brand">
       <div class="dot"></div>
-      <h1>PocketMotion — MCP OAuth 2.1</h1>
+      <h1>Connect Claude to PocketMotion</h1>
     </div>
     <p>
-      Izinkan konektor eksternal (Claude / MCP Client) mengakses 7 Remotion MCP Tools di workspace PocketMotion Anda.
+      Allow Claude to access your Remotion video studio tools (inspect layers, update parameters, edit templates, and generate animations).
     </p>
-    <div class="meta">
-      CLIENT: ${clientId.replace(/[<>"']/g, "")}<br/>
-      SCOPE: mcp:tools read/write
-    </div>
-    <a class="btn" href="${finalRedirect.replace(/"/g, "&quot;")}">
-      Approve &amp; Connect PocketMotion
+    <a id="authBtn" class="btn" href="${finalRedirect.replace(/"/g, "&quot;")}">
+      Authorize &amp; Connect to Claude
     </a>
+    <div class="footer">
+      Redirecting to: ${new URL(redirectUri).hostname}
+    </div>
   </div>
+  <script>
+    // Auto-click if inside an automated popup or webview
+    const btn = document.getElementById('authBtn');
+    if (window.location.search.includes('auto=1') || window.location.search.includes('approve=1')) {
+      window.location.href = btn.href;
+    }
+  </script>
 </body>
 </html>`;
 
@@ -135,6 +154,7 @@ export async function GET(req: NextRequest) {
     status: 200,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
+      "Access-Control-Allow-Origin": "*",
     },
   });
 }
@@ -142,4 +162,3 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   return GET(req);
 }
-

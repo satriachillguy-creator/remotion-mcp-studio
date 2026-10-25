@@ -8,9 +8,9 @@ import {
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS, PUT, HEAD",
   "Access-Control-Allow-Headers": "*",
-  "Access-Control-Expose-Headers": "Mcp-Session-Id",
+  "Access-Control-Expose-Headers": "*",
 };
 
 export async function OPTIONS() {
@@ -27,20 +27,42 @@ export async function GET(req: NextRequest) {
   // Support SSE stream if requested by an MCP client over GET
   if (accept.includes("text/event-stream")) {
     const encoder = new TextEncoder();
+    let isClosed = false;
+
     const stream = new ReadableStream({
       start(controller) {
+        // 1. Initial endpoint event required by MCP SSE transport
         controller.enqueue(
           encoder.encode(`event: endpoint\ndata: /api/mcp\n\n`)
         );
+
+        // 2. Periodic keep-alive ping comment so the connection stays open
+        const interval = setInterval(() => {
+          if (isClosed) {
+            clearInterval(interval);
+            return;
+          }
+          try {
+            controller.enqueue(encoder.encode(`: keepalive\n\n`));
+          } catch {
+            isClosed = true;
+            clearInterval(interval);
+          }
+        }, 15000);
+      },
+      cancel() {
+        isClosed = true;
       },
     });
+
     return new NextResponse(stream, {
       status: 200,
       headers: {
         ...CORS_HEADERS,
-        "Content-Type": "text/event-stream",
+        "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        "Mcp-Session-Id": "pocketmotion-session-1",
       },
     });
   }
@@ -49,7 +71,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(
     {
       protocol: "Model Context Protocol (MCP)",
-      protocolVersion: "2025-03-26",
+      protocolVersion: "2024-11-05",
       serverInfo: {
         name: "pocketmotion-remotion-mcp-server",
         version: "1.0.0",
@@ -67,7 +89,7 @@ export async function GET(req: NextRequest) {
 function handleSingleJsonRpc(msg: any) {
   const { jsonrpc = "2.0", id, method, params = {} } = msg || {};
 
-  // JSON-RPC notifications (no response required or empty ack)
+  // JSON-RPC notifications (no response required or empty 202/200)
   if (
     method === "notifications/initialized" ||
     method === "notifications/cancelled" ||
@@ -81,7 +103,7 @@ function handleSingleJsonRpc(msg: any) {
   }
 
   if (method === "initialize") {
-    const requestedVersion = params?.protocolVersion || "2025-03-26";
+    const requestedVersion = params?.protocolVersion || "2024-11-05";
     return {
       jsonrpc,
       id: id ?? 1,
@@ -133,7 +155,7 @@ function handleSingleJsonRpc(msg: any) {
   if (method === "tools/call") {
     const toolName = params.name;
     const toolArgs = params.arguments || {};
-    const source = params._source || "remote-mcp";
+    const source = params._source || "remote-mcp-claude";
 
     const { output, logEntry, project } = runServerMcpTool(
       toolName,
@@ -205,7 +227,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(responses, {
         headers: {
           ...CORS_HEADERS,
-          "Mcp-Session-Id": "pocketmotion-session-main",
+          "Mcp-Session-Id": "pocketmotion-session-1",
         },
       });
     }
@@ -217,7 +239,7 @@ export async function POST(req: NextRequest) {
         status: 202,
         headers: {
           ...CORS_HEADERS,
-          "Mcp-Session-Id": "pocketmotion-session-main",
+          "Mcp-Session-Id": "pocketmotion-session-1",
         },
       });
     }
@@ -225,7 +247,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(responseObj, {
       headers: {
         ...CORS_HEADERS,
-        "Mcp-Session-Id": "pocketmotion-session-main",
+        "Mcp-Session-Id": "pocketmotion-session-1",
       },
     });
   } catch (err: any) {
