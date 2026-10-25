@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
     }[] = [];
 
     let latestProject = currentProject;
+    let combinedUiCommands: Record<string, any> = {};
 
     for (const call of agentResponse.toolCalls) {
       const { output, project } = runServerMcpTool(
@@ -44,6 +45,9 @@ export async function POST(req: NextRequest) {
         "built-in-ai"
       );
       latestProject = project;
+      if (output.data?.uiCommands) {
+        combinedUiCommands = { ...combinedUiCommands, ...output.data.uiCommands };
+      }
       executedTools.push({
         toolName: call.toolName,
         args: call.args,
@@ -55,6 +59,7 @@ export async function POST(req: NextRequest) {
       reply: agentResponse.reply,
       toolCalls: executedTools,
       project: latestProject,
+      uiCommands: combinedUiCommands,
       logs: getServerMcpStore().logs,
     });
   } catch (err: any) {

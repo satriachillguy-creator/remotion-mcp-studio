@@ -674,6 +674,12 @@ export default function StudioApp() {
     a.click();
   };
 
+  const seekToFrame = (f: number) => {
+    const clamped = Math.max(0, Math.min(project.videoConfig.durationInFrames - 1, f));
+    playerRef.current?.seekTo(clamped);
+    setCurrentFrame(clamped);
+  };
+
   const handleSendPrompt = async (customPrompt?: string) => {
     const text = (customPrompt ?? chatInput).trim();
     if (!text || isAiLoading) return;
@@ -706,6 +712,33 @@ export default function StudioApp() {
 
       if (data.project) setProject(data.project);
       if (Array.isArray(data.logs)) setMcpLogs(data.logs);
+
+      // Execute unified AI UI / timeline commands if emitted by manage_studio
+      if (data.uiCommands) {
+        if (typeof data.uiCommands.seekFrame === "number") {
+          seekToFrame(data.uiCommands.seekFrame);
+        }
+        if (data.uiCommands.playbackAction === "play") {
+          playerRef.current?.play();
+          setIsPlaying(true);
+        } else if (data.uiCommands.playbackAction === "pause") {
+          playerRef.current?.pause();
+          setIsPlaying(false);
+        } else if (data.uiCommands.playbackAction === "restart") {
+          seekToFrame(0);
+          playerRef.current?.play();
+          setIsPlaying(true);
+        }
+        if (typeof data.uiCommands.safeZone === "boolean") {
+          setShowSafeZone(data.uiCommands.safeZone);
+        }
+        if (data.uiCommands.activeTab) {
+          setActiveMobileTab(data.uiCommands.activeTab);
+          if (data.uiCommands.activeTab !== "chat") {
+            setActiveDesktopRightTab(data.uiCommands.activeTab);
+          }
+        }
+      }
 
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
@@ -873,12 +906,6 @@ export default function StudioApp() {
       player.play();
       setIsPlaying(true);
     }
-  };
-
-  const seekToFrame = (f: number) => {
-    const clamped = Math.max(0, Math.min(project.videoConfig.durationInFrames - 1, f));
-    playerRef.current?.seekTo(clamped);
-    setCurrentFrame(clamped);
   };
 
   const SafeVideoComponent = useMemo(() => {

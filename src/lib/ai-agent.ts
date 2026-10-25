@@ -308,26 +308,29 @@ export function runSmartBuiltinMcpAgent(
   project: StudioProject
 ): AgentTurnResponse {
   const lower = prompt.toLowerCase();
-  const toolCalls: AgentToolCall[] = [];
+  const masterArgs: Record<string, any> = { action: "orchestrate" };
   const explanations: string[] = [];
 
-  if (
-    lower.includes("perbaiki") ||
-    lower.includes("fix") ||
-    lower.includes("error") ||
-    project.diagnostics.hasError
-  ) {
-    toolCalls.push({ toolName: "get_compile_diagnostics", args: {} });
-    toolCalls.push({
-      toolName: "apply_template_preset",
-      args: { templateId: project.templateId || "swiss-editorial-reel" },
-    });
-    explanations.push(
-      "Memeriksa diagnostik AST via `get_compile_diagnostics` dan memulihkan komposisi TSX ke state valid."
-    );
+  // 1. Template selection
+  if (lower.includes("flash sale") || lower.includes("flashsale") || lower.includes("promo umkm") || lower.includes("diskon")) {
+    masterArgs.templateId = "umkm-promo-flashsale";
+    explanations.push("Menerapkan template **Promo Flash Sale UMKM (9:16)**.");
+  } else if (lower.includes("review") || lower.includes("testimoni") || lower.includes("ulasan") || lower.includes("bintang 5")) {
+    masterArgs.templateId = "umkm-review-testimoni";
+    explanations.push("Menerapkan template **Testimoni & Review UMKM (9:16)**.");
+  } else if (lower.includes("keynote") || lower.includes("telemetry") || lower.includes("dashboard")) {
+    masterArgs.templateId = "linear-product-keynote";
+    explanations.push("Menerapkan template **Monochrome Telemetry (16:9)**.");
+  } else if (lower.includes("kinetic") || lower.includes("square") || lower.includes("poster")) {
+    masterArgs.templateId = "brutalist-kinetic-square";
+    explanations.push("Menerapkan template **Kinetic Monochrome (1:1)**.");
+  } else if (lower.includes("editorial") || lower.includes("swiss")) {
+    masterArgs.templateId = "swiss-editorial-reel";
+    explanations.push("Menerapkan template **Minimalist Editorial (9:16)**.");
   }
 
-  // Aspect ratio
+  // 2. Aspect Ratio & Dimensions
+  const videoConfigUpdates: Record<string, any> = {};
   if (
     lower.includes("16:9") ||
     lower.includes("youtube") ||
@@ -335,10 +338,7 @@ export function runSmartBuiltinMcpAgent(
     lower.includes("landscape") ||
     lower.includes("widescreen")
   ) {
-    toolCalls.push({
-      toolName: "update_video_config",
-      args: { aspectRatio: "16:9" },
-    });
+    videoConfigUpdates.aspectRatio = "16:9";
     explanations.push("Mengatur dimensi kanvas ke **16:9 (1920×1080)**.");
   } else if (
     lower.includes("9:16") ||
@@ -347,150 +347,128 @@ export function runSmartBuiltinMcpAgent(
     lower.includes("vertikal") ||
     lower.includes("hp")
   ) {
-    toolCalls.push({
-      toolName: "update_video_config",
-      args: { aspectRatio: "9:16" },
-    });
+    videoConfigUpdates.aspectRatio = "9:16";
     explanations.push("Mengatur dimensi kanvas ke **9:16 (1080×1920)**.");
   } else if (lower.includes("1:1") || lower.includes("square") || lower.includes("kotak")) {
-    toolCalls.push({
-      toolName: "update_video_config",
-      args: { aspectRatio: "1:1" },
-    });
+    videoConfigUpdates.aspectRatio = "1:1";
     explanations.push("Mengatur dimensi kanvas ke **1:1 (1080×1080)**.");
   }
 
-  // Duration
+  // Duration & FPS
   const secMatch = lower.match(/(\d+)\s*(detik|second|sec|s\b)/);
   if (secMatch) {
-    const secs = Math.min(25, Math.max(2, parseInt(secMatch[1], 10)));
-    const frames = secs * project.videoConfig.fps;
-    toolCalls.push({
-      toolName: "update_video_config",
-      args: { durationInFrames: frames },
-    });
-    explanations.push(`Mengubah durasi timeline menjadi **${secs}s (${frames} frame @ ${project.videoConfig.fps}fps)**.`);
+    const secs = Math.min(30, Math.max(2, parseInt(secMatch[1], 10)));
+    const targetFps = lower.includes("60 fps") || lower.includes("60fps") ? 60 : project.videoConfig.fps;
+    videoConfigUpdates.durationInFrames = secs * targetFps;
+    explanations.push(`Mengatur durasi video menjadi **${secs} detik (${secs * targetFps} frame)**.`);
+  }
+  if (lower.includes("60 fps") || lower.includes("60fps")) {
+    videoConfigUpdates.fps = 60;
+    explanations.push("Mengatur frame rate menjadi **60 FPS**.");
+  } else if (lower.includes("30 fps") || lower.includes("30fps")) {
+    videoConfigUpdates.fps = 30;
+    explanations.push("Mengatur frame rate menjadi **30 FPS**.");
+  }
+  if (Object.keys(videoConfigUpdates).length > 0) {
+    masterArgs.videoConfig = videoConfigUpdates;
   }
 
-  // Scene templates / TSX writers
+  // 3. Visual Properties & Content
+  const propsUpdates: Record<string, any> = {};
+
+  const quoteMatch = prompt.match(/["']([^"']+)["']/);
+  if (quoteMatch) {
+    propsUpdates.headline = quoteMatch[1];
+    propsUpdates.productName = quoteMatch[1];
+    explanations.push(`Memperbarui teks konten menjadi **"${quoteMatch[1]}"**.`);
+  }
+
+  // Colors
+  for (const [colorName, hex] of Object.entries(COLOR_MAP)) {
+    if (lower.includes(`warna ${colorName}`) || lower.includes(`${colorName} color`)) {
+      if (colorName === "putih" || colorName === "white") {
+        propsUpdates.primaryColor = "#000000";
+        propsUpdates.bgColor = "#FFFFFF";
+        propsUpdates.accentColor = "#525252";
+        explanations.push("Mengubah skema warna ke **Light Mode Monokrom**.");
+      } else if (colorName === "hitam" || colorName === "black") {
+        propsUpdates.primaryColor = "#FFFFFF";
+        propsUpdates.bgColor = "#000000";
+        propsUpdates.accentColor = "#A3A3A3";
+        explanations.push("Mengubah skema warna ke **Dark Mode Monokrom**.");
+      } else {
+        propsUpdates.accentColor = hex;
+        explanations.push(`Mengatur warna aksen ke **${colorName.toUpperCase()}** (\`${hex}\`).`);
+      }
+      break;
+    }
+  }
+
+  if (Object.keys(propsUpdates).length > 0) {
+    masterArgs.props = propsUpdates;
+  }
+
+  // 4. Code Generation
   if (lower.includes("countdown") || lower.includes("hitung mundur") || lower.includes("timer")) {
-    toolCalls.push({
-      toolName: "write_component_code",
-      args: {
-        path: "MainVideo.tsx",
-        code: buildCountdownRemotionCode(),
-      },
-    });
-    explanations.push(
-      "Menulis komponen `CountdownComposition` ke `MainVideo.tsx` menggunakan dial optik `conic-gradient` dan `spring` per detik."
-    );
-  } else if (
-    lower.includes("promo") ||
-    lower.includes("diskon") ||
-    lower.includes("sale") ||
-    lower.includes("campaign")
+    masterArgs.code = buildCountdownRemotionCode();
+    explanations.push("Membuat kode komponen baru **Countdown Dial Kinetik** di `MainVideo.tsx`.");
+  } else if (lower.includes("campaign") || lower.includes("editorial")) {
+    masterArgs.code = buildEditorialPromoCode();
+    explanations.push("Membuat kode komponen baru **Editorial Campaign Display** di `MainVideo.tsx`.");
+  }
+
+  // 5. UI & Playback Controls
+  if (lower.includes("safe zone") || lower.includes("zona aman")) {
+    const isDisable = lower.includes("matikan") || lower.includes("tutup") || lower.includes("off");
+    masterArgs.safeZone = !isDisable;
+    explanations.push(`Mengatur overlay Safe Zone TikTok/Reels ke **${!isDisable ? "AKTIF" : "NONAKTIF"}**.`);
+  }
+
+  if (lower.includes("buka kode") || lower.includes("lihat kode") || lower.includes("tab code")) {
+    masterArgs.activeTab = "code";
+    explanations.push("Membuka tab **Code Editor**.");
+  } else if (lower.includes("inspector") || lower.includes("kontrol")) {
+    masterArgs.activeTab = "controls";
+    explanations.push("Membuka tab **Property Inspector**.");
+  }
+
+  if (lower.includes("putar") || lower.includes("play")) {
+    masterArgs.playbackAction = "play";
+    explanations.push("Memulai pemutaran video di player.");
+  } else if (lower.includes("jeda") || lower.includes("pause") || lower.includes("stop")) {
+    masterArgs.playbackAction = "pause";
+    explanations.push("Menjeda video di player.");
+  } else if (lower.includes("ulang") || lower.includes("restart")) {
+    masterArgs.playbackAction = "restart";
+    explanations.push("Memutar ulang video dari frame 0.");
+  }
+
+  if (
+    !masterArgs.templateId &&
+    !masterArgs.videoConfig &&
+    !masterArgs.props &&
+    !masterArgs.code &&
+    masterArgs.safeZone === undefined &&
+    !masterArgs.activeTab &&
+    !masterArgs.playbackAction
   ) {
-    toolCalls.push({
-      toolName: "write_component_code",
-      args: {
-        path: "MainVideo.tsx",
-        code: buildEditorialPromoCode(),
-      },
-    });
-    explanations.push(
-      "Menulis komponen `EditorialCampaignComposition` ke `MainVideo.tsx` dengan tipografi kontras tinggi."
-    );
-  } else if (
-    lower.includes("telemetry") ||
-    lower.includes("keynote") ||
-    lower.includes("chart") ||
-    lower.includes("saas") ||
-    lower.includes("data")
-  ) {
-    toolCalls.push({
-      toolName: "apply_template_preset",
-      args: { templateId: "linear-product-keynote" },
-    });
-    explanations.push("Mengaktifkan preset `02 / Keynote Telemetry` (16:9).");
-  } else if (lower.includes("kinetic") || lower.includes("tipografi") || lower.includes("brutalist")) {
-    toolCalls.push({
-      toolName: "apply_template_preset",
-      args: { templateId: "brutalist-kinetic-square" },
-    });
-    explanations.push("Mengaktifkan preset `03 / Kinetic Type System` (1:1).");
-  } else if (lower.includes("swiss") || lower.includes("editorial") || lower.includes("grid")) {
-    toolCalls.push({
-      toolName: "apply_template_preset",
-      args: { templateId: "swiss-editorial-reel" },
-    });
-    explanations.push("Mengaktifkan preset `01 / Swiss Editorial Grid` (9:16).");
+    const cleanText = prompt.length <= 42 ? prompt.toUpperCase() : prompt.slice(0, 38).toUpperCase();
+    masterArgs.props = { headline: cleanText, productName: cleanText };
+    explanations.push(`Memperbarui judul video menjadi **"${cleanText}"**.`);
   }
 
-  // Props extraction
-  const propUpdates: Record<string, any> = {};
-  const quotedMatches = prompt.match(/["'“”]([^"'“”]{2,60})["'“”]/g);
-  if (quotedMatches && quotedMatches.length > 0) {
-    propUpdates.headline = quotedMatches[0].replace(/^["'“”]|["'“”]$/g, "");
-    if (quotedMatches.length > 1) {
-      propUpdates.subheadline = quotedMatches[1].replace(/^["'“”]|["'“”]$/g, "");
-    }
-  } else {
-    const titleMatch = prompt.match(/(?:judul|headline|teks|tulisan)\s+(?:jadi|ke|menjadi|:)\s+([^\n,.]+)/i);
-    if (titleMatch) {
-      propUpdates.headline = titleMatch[1].trim();
-    }
-  }
-
-  const matchedColors: string[] = [];
-  for (const [word, hex] of Object.entries(COLOR_MAP)) {
-    if (lower.includes(word)) {
-      matchedColors.push(hex);
-    }
-  }
-  if (matchedColors.length > 0) {
-    propUpdates.primaryColor = matchedColors[0];
-    if (matchedColors.length > 1) {
-      propUpdates.accentColor = matchedColors[1];
-    }
-  }
-
-  if (lower.includes("invert") || lower.includes("terang") || lower.includes("light")) {
-    propUpdates.bgColor = "#F4F4F6";
-    propUpdates.accentColor = "#09090B";
-    propUpdates.primaryColor = "#FF5500";
-  }
-
-  if (Object.keys(propUpdates).length > 0) {
-    toolCalls.push({
-      toolName: "update_schema_props",
-      args: { props: propUpdates },
-    });
-    explanations.push(
-      `Memperbarui parameter skema melalui \`update_schema_props\`: \`${JSON.stringify(propUpdates)}\`.`
-    );
-  }
-
-  if (toolCalls.length === 0) {
-    const cleanHeadline =
-      prompt.length <= 42 ? prompt.toUpperCase() : prompt.slice(0, 38).toUpperCase();
-    toolCalls.push({
-      toolName: "update_schema_props",
-      args: {
-        props: {
-          headline: cleanHeadline,
-        },
-      },
-    });
-    explanations.push(
-      `Memperbarui properti \`headline\` menjadi **"${cleanHeadline}"** via \`update_schema_props\`.`
-    );
-  }
+  const toolCalls: AgentToolCall[] = [
+    {
+      toolName: "manage_studio",
+      args: masterArgs,
+    },
+  ];
 
   const reply = [
-    "**[Local Rule Parser → MCP Tools]**",
+    "**[Studio Omni Master Tool → Eksekusi Penuh]**",
     ...explanations.map((e) => `- ${e}`),
     "",
-    "*Catatan: Saat ini berjalan dalam mode parser perintah lokal (tanpa API key). Untuk generasi kode TSX bebas menggunakan LLM penuh, masukkan API Key Gemini atau OpenAI pada menu Settings.*",
+    "Semua perubahan telah disinkronkan ke dalam studio secara serentak.",
   ].join("\n");
 
   return { reply, toolCalls };
