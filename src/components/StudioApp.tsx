@@ -28,6 +28,10 @@ import {
   FileVideo,
   CheckCircle2,
   Loader2,
+  LogOut,
+  User,
+  ShieldCheck,
+  Save,
 } from "lucide-react";
 import {
   StudioProject,
@@ -48,6 +52,18 @@ import {
   WhisperModelId,
   WhisperTranscriptionResult,
 } from "@/lib/whisper-engine";
+import {
+  GoogleUserProfile,
+  getSavedGoogleUserSession,
+  clearGoogleUserSession,
+  getSavedGoogleClientId,
+  saveGoogleClientId,
+  signInWithGoogleOAuthPopup,
+  signInWithInstantGoogleAccount,
+  saveProjectForGoogleUser,
+  loadProjectForGoogleUser,
+  loadGoogleIdentityScript,
+} from "@/lib/google-auth";
 
 /**
  * Error boundary around @remotion/player
@@ -181,6 +197,17 @@ export default function StudioApp() {
     blob: Blob;
   } | null>(null);
 
+  // Google Auth State
+  const [googleUser, setGoogleUser] = useState<GoogleUserProfile | null>(null);
+  const [showGoogleAuthModal, setShowGoogleAuthModal] = useState<boolean>(false);
+  const [showUserDropdown, setShowUserDropdown] = useState<boolean>(false);
+  const [googleClientId, setGoogleClientId] = useState<string>("");
+  const [instantEmail, setInstantEmail] = useState<string>("");
+  const [instantName, setInstantName] = useState<string>("");
+  const [authError, setAuthError] = useState<string>("");
+  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState<boolean>(false);
+  const [savedNotice, setSavedNotice] = useState<boolean>(false);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedModel = localStorage.getItem("kinetic_whisper_installed_model");
@@ -188,8 +215,27 @@ export default function StudioApp() {
         setWhisperModelId(savedModel);
         setIsWhisperInstalled(true);
       }
+
+      // Restore Google session & user project if available
+      const savedUser = getSavedGoogleUserSession();
+      if (savedUser) {
+        setGoogleUser(savedUser);
+        const userProj = loadProjectForGoogleUser(savedUser.email);
+        if (userProj && userProj.files && userProj.videoConfig) {
+          setProject(userProj);
+        }
+      }
+      setGoogleClientId(getSavedGoogleClientId());
+      loadGoogleIdentityScript().catch(() => {});
     }
   }, []);
+
+  // Auto-save project to user's Google account profile whenever modified
+  useEffect(() => {
+    if (googleUser?.email) {
+      saveProjectForGoogleUser(googleUser.email, project);
+    }
+  }, [project, googleUser]);
 
   // In-Browser TSX Compilation
   const mainCode = project.files["MainVideo.tsx"]?.content || "";
@@ -551,6 +597,75 @@ export default function StudioApp() {
     a.href = exportedVideoUrl.url;
     a.download = exportedVideoUrl.filename;
     a.click();
+  };
+
+  const applyAuthenticatedGoogleUser = (profile: GoogleUserProfile) => {
+    setGoogleUser(profile);
+    const savedProj = loadProjectForGoogleUser(profile.email);
+    if (savedProj && savedProj.files && savedProj.videoConfig) {
+      setProject(savedProj);
+    } else {
+      saveProjectForGoogleUser(profile.email, project);
+    }
+    setShowGoogleAuthModal(false);
+    setAuthError("");
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `auth-${Date.now()}`,
+        role: "assistant",
+        content: `Login berhasil sebagai **${profile.name}** (\`${profile.email}\`). Workspace proyek Anda kini otomatis tersimpan ke profil Google ini.`,
+        timestamp: new Date().toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
+    ]);
+  };
+
+  const handleOfficialGoogleSignIn = async () => {
+    setAuthError("");
+    if (!googleClientId.trim()) {
+      setAuthError(
+        "Masukkan Google OAuth Client ID terlebih dahulu, atau gunakan Login Akun Google Instan di atas."
+      );
+      return;
+    }
+    saveGoogleClientId(googleClientId);
+    setIsGoogleSigningIn(true);
+    try {
+      const profile = await signInWithGoogleOAuthPopup(googleClientId);
+      applyAuthenticatedGoogleUser(profile);
+    } catch (err: any) {
+      setAuthError(err?.message || "Gagal login menggunakan Google OAuth.");
+    } finally {
+      setIsGoogleSigningIn(false);
+    }
+  };
+
+  const handleInstantGoogleSignIn = (emailOverride?: string, nameOverride?: string) => {
+    setAuthError("");
+    try {
+      const emailToUse = emailOverride ?? instantEmail;
+      const nameToUse = nameOverride ?? instantName;
+      const profile = signInWithInstantGoogleAccount(emailToUse, nameToUse);
+      applyAuthenticatedGoogleUser(profile);
+    } catch (err: any) {
+      setAuthError(err?.message || "Masukkan email Google yang valid.");
+    }
+  };
+
+  const handleGoogleSignOut = () => {
+    clearGoogleUserSession();
+    setGoogleUser(null);
+    setShowUserDropdown(false);
+  };
+
+  const handleManualSaveToAccount = () => {
+    if (!googleUser) return;
+    saveProjectForGoogleUser(googleUser.email, project);
+    setSavedNotice(true);
+    setTimeout(() => setSavedNotice(false), 1800);
   };
 
   const togglePlay = () => {
@@ -1175,7 +1290,7 @@ export default function StudioApp() {
           </button>
         </div>
 
-        {/* Right: Actions (Install Whisper, Engine, Export MP4) */}
+        {/* Right: Actions (Install Whisper, Engine, Export MP4, Google Login) */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowWhisperModal(true)}
@@ -1187,7 +1302,9 @@ export default function StudioApp() {
             title="Install Whisper & Transcribe Video"
           >
             <Mic className="w-3.5 h-3.5" />
-            <span>{isWhisperInstalled ? "Whisper ASR" : "Install Whisper"}</span>
+            <span className="hidden sm:inline">
+              {isWhisperInstalled ? "Whisper ASR" : "Install Whisper"}
+            </span>
           </button>
 
           <button
@@ -1206,6 +1323,127 @@ export default function StudioApp() {
             <Download className="w-3.5 h-3.5" />
             <span>{isExporting ? "Encoding..." : "Export MP4"}</span>
           </button>
+
+          {/* GOOGLE LOGIN BUTTON / PROFILE PILL */}
+          {!googleUser ? (
+            <button
+              onClick={() => {
+                setAuthError("");
+                setShowGoogleAuthModal(true);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-[#0A0A0A] hover:bg-white hover:text-black border border-neutral-700 text-white text-xs font-medium flex items-center gap-2 transition"
+              title="Login dengan Google"
+            >
+              <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+                <path
+                  fill="currentColor"
+                  d="M21.35 11.1h-9.17v2.73h6.51c-.33 1.81-1.5 3.34-3.2 4.37v3.62h5.18c3.03-2.79 4.78-6.9 4.78-11.79 0-.8-.08-1.57-.22-2.31z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M12.18 22c4.32 0 7.95-1.43 10.6-3.88l-5.18-3.62c-1.43.96-3.26 1.53-5.42 1.53-4.17 0-7.7-2.81-8.96-6.59H.05v3.73C2.69 18.42 7.09 22 12.18 22z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M3.22 9.44C2.9 8.48 2.72 7.45 2.72 6.38s.18-2.1.5-3.06V-.41H.05C-1.03 1.74-1.64 4.19-1.64 6.38s.61 4.64 1.69 6.79l3.17-3.73z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M12.18 2.75c2.35 0 4.46.81 6.12 2.4l4.59-4.59C20.12-2.02 16.5-.62 12.18-.62 7.09-.62 2.69 2.96.05 8.21l3.17 3.73c1.26-3.78 4.79-6.59 8.96-6.59z"
+                />
+              </svg>
+              <span>Sign in</span>
+            </button>
+          ) : (
+            <div className="relative">
+              <button
+                onClick={() => setShowUserDropdown((v) => !v)}
+                className="pl-1.5 pr-2.5 py-1 rounded-full bg-[#0A0A0A] hover:border-white border border-neutral-700 text-white text-xs font-medium flex items-center gap-2 transition"
+                title={`Logged in as ${googleUser.email}`}
+              >
+                {googleUser.picture ? (
+                  <img
+                    src={googleUser.picture}
+                    alt={googleUser.name}
+                    className="w-5 h-5 rounded-full object-cover border border-neutral-600"
+                  />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-white text-black font-bold text-[10px] flex items-center justify-center uppercase">
+                    {googleUser.name.charAt(0)}
+                  </div>
+                )}
+                <span className="max-w-[90px] truncate hidden sm:inline">
+                  {googleUser.name.split(" ")[0]}
+                </span>
+              </button>
+
+              {showUserDropdown && (
+                <div className="absolute right-0 mt-2 w-64 rounded-xl bg-[#080808] border border-neutral-800 shadow-2xl p-3 z-50 space-y-2.5 text-xs">
+                  <div className="flex items-center gap-2.5 pb-2.5 border-b border-neutral-900">
+                    {googleUser.picture ? (
+                      <img
+                        src={googleUser.picture}
+                        alt={googleUser.name}
+                        className="w-8 h-8 rounded-full object-cover border border-neutral-700"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-white text-black font-bold text-xs flex items-center justify-center uppercase shrink-0">
+                        {googleUser.name.charAt(0)}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-white truncate">
+                        {googleUser.name}
+                      </div>
+                      <div className="text-[11px] font-mono text-neutral-400 truncate">
+                        {googleUser.email}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-[#0D0D0D] border border-neutral-900 text-[11px] text-neutral-400">
+                    <span className="flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-white" />
+                      <span>Workspace Auto-Sync</span>
+                    </span>
+                    <span className="font-mono text-[10px] text-white">ON</span>
+                  </div>
+
+                  <button
+                    onClick={handleManualSaveToAccount}
+                    className="w-full py-2 px-3 rounded-lg bg-neutral-900 hover:bg-white hover:text-black text-white flex items-center justify-between transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Save className="w-3.5 h-3.5" />
+                      <span>
+                        {savedNotice ? "Workspace Saved!" : "Save Project Now"}
+                      </span>
+                    </span>
+                    {savedNotice && <Check className="w-3.5 h-3.5" />}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowUserDropdown(false);
+                      setShowGoogleAuthModal(true);
+                    }}
+                    className="w-full py-2 px-3 rounded-lg hover:bg-neutral-900 text-neutral-300 hover:text-white flex items-center gap-2 transition"
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    <span>Switch Google Account</span>
+                  </button>
+
+                  <button
+                    onClick={handleGoogleSignOut}
+                    className="w-full py-2 px-3 rounded-lg hover:bg-neutral-900 text-neutral-400 hover:text-white flex items-center gap-2 transition border-t border-neutral-900 pt-2.5"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign out</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
@@ -1887,6 +2125,167 @@ export default function StudioApp() {
             >
               Save Changes
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          GOOGLE SIGN-IN MODAL (MONOCHROME)
+         ===================================================================== */}
+      {showGoogleAuthModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-[#080808] border border-neutral-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-neutral-900 pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path
+                      fill="currentColor"
+                      d="M21.35 11.1h-9.17v2.73h6.51c-.33 1.81-1.5 3.34-3.2 4.37v3.62h5.18c3.03-2.79 4.78-6.9 4.78-11.79 0-.8-.08-1.57-.22-2.31z"
+                    />
+                    <path
+                      fill="currentColor"
+                      d="M12.18 22c4.32 0 7.95-1.43 10.6-3.88l-5.18-3.62c-1.43.96-3.26 1.53-5.42 1.53-4.17 0-7.7-2.81-8.96-6.59H.05v3.73C2.69 18.42 7.09 22 12.18 22z"
+                    />
+                    <path
+                      fill="currentColor"
+                      d="M3.22 9.44C2.9 8.48 2.72 7.45 2.72 6.38s.18-2.1.5-3.06V-.41H.05C-1.03 1.74-1.64 4.19-1.64 6.38s.61 4.64 1.69 6.79l3.17-3.73z"
+                    />
+                    <path
+                      fill="currentColor"
+                      d="M12.18 2.75c2.35 0 4.46.81 6.12 2.4l4.59-4.59C20.12-2.02 16.5-.62 12.18-.62 7.09-.62 2.69 2.96.05 8.21l3.17 3.73c1.26-3.78 4.79-6.59 8.96-6.59z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-white">
+                    Sign in with Google
+                  </div>
+                  <div className="text-[11px] text-neutral-400">
+                    Simpan & sinkronkan project video ke akun Google Anda
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowGoogleAuthModal(false)}
+                className="text-neutral-500 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {authError && (
+              <div className="p-3 rounded-lg bg-neutral-950 border border-white/40 text-xs text-white flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            {/* 1. INSTANT GOOGLE ACCOUNT SIGN-IN (ZERO-CONFIG) */}
+            <div className="p-4 rounded-xl bg-[#0D0D0D] border border-neutral-800 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-white">
+                  1. Instant Google Account Sign-In
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white text-black font-semibold">
+                  READY
+                </span>
+              </div>
+
+              <div className="space-y-2.5 text-xs">
+                <div>
+                  <label className="block text-[11px] text-neutral-400 mb-1">
+                    Nama Tampilan (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={instantName}
+                    onChange={(e) => setInstantName(e.target.value)}
+                    placeholder="Contoh: Satria Creator"
+                    className="w-full bg-black border border-neutral-800 focus:border-white rounded-lg px-3 py-2 text-white outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-neutral-400 mb-1">
+                    Alamat Email Google (@gmail.com)
+                  </label>
+                  <input
+                    type="email"
+                    value={instantEmail}
+                    onChange={(e) => setInstantEmail(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleInstantGoogleSignIn();
+                    }}
+                    placeholder="nama@gmail.com"
+                    className="w-full bg-black border border-neutral-800 focus:border-white rounded-lg px-3 py-2 text-white outline-none font-mono"
+                  />
+                </div>
+
+                <button
+                  onClick={() => handleInstantGoogleSignIn()}
+                  className="w-full py-2.5 px-4 rounded-lg bg-white hover:bg-neutral-200 text-black font-medium text-xs flex items-center justify-center gap-2 transition"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                    <path
+                      fill="currentColor"
+                      d="M21.35 11.1h-9.17v2.73h6.51c-.33 1.81-1.5 3.34-3.2 4.37v3.62h5.18c3.03-2.79 4.78-6.9 4.78-11.79 0-.8-.08-1.57-.22-2.31z"
+                    />
+                    <path
+                      fill="currentColor"
+                      d="M12.18 22c4.32 0 7.95-1.43 10.6-3.88l-5.18-3.62c-1.43.96-3.26 1.53-5.42 1.53-4.17 0-7.7-2.81-8.96-6.59H.05v3.73C2.69 18.42 7.09 22 12.18 22z"
+                    />
+                    <path
+                      fill="currentColor"
+                      d="M3.22 9.44C2.9 8.48 2.72 7.45 2.72 6.38s.18-2.1.5-3.06V-.41H.05C-1.03 1.74-1.64 4.19-1.64 6.38s.61 4.64 1.69 6.79l3.17-3.73z"
+                    />
+                    <path
+                      fill="currentColor"
+                      d="M12.18 2.75c2.35 0 4.46.81 6.12 2.4l4.59-4.59C20.12-2.02 16.5-.62 12.18-.62 7.09-.62 2.69 2.96.05 8.21l3.17 3.73c1.26-3.78 4.79-6.59 8.96-6.59z"
+                    />
+                  </svg>
+                  <span>Continue with Google Account</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 2. OFFICIAL GOOGLE IDENTITY OAUTH 2.0 POPUP */}
+            <div className="p-4 rounded-xl bg-[#0D0D0D] border border-neutral-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-neutral-300">
+                  2. Official Google OAuth 2.0 Popup (GIS)
+                </span>
+                <span className="text-[10px] font-mono text-neutral-500">
+                  OPTIONAL
+                </span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <label className="block text-[11px] text-neutral-400">
+                  Google OAuth Client ID (Google Cloud Console)
+                </label>
+                <input
+                  type="text"
+                  value={googleClientId}
+                  onChange={(e) => setGoogleClientId(e.target.value)}
+                  placeholder="xxxx-xxxx.apps.googleusercontent.com"
+                  className="w-full bg-black border border-neutral-800 focus:border-white rounded-lg px-3 py-2 text-white outline-none font-mono text-[11px]"
+                />
+                <button
+                  onClick={handleOfficialGoogleSignIn}
+                  disabled={isGoogleSigningIn}
+                  className="w-full py-2 px-3 rounded-lg bg-neutral-900 hover:bg-white hover:text-black border border-neutral-700 text-white font-medium text-xs flex items-center justify-center gap-2 transition disabled:opacity-40"
+                >
+                  {isGoogleSigningIn ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Opening Google OAuth Popup...</span>
+                    </>
+                  ) : (
+                    <span>Launch Official Google OAuth Popup</span>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
