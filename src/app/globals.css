@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #000000;
+  color: #ffffff;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Minimalist Monochrome Dot Matrix Canvas */
+.bg-studio-dots {
+  background-color: #050505;
+  background-image: radial-gradient(#1f1f1f 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Pure Black & White Range Sliders */
+input[type="range"].studio-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #262626;
+  height: 2px;
+  border-radius: 999px;
+  outline: none;
+}
+
+input[type="range"].studio-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #ffffff;
+  border: 2px solid #000000;
+  cursor: ew-resize;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px #ffffff;
+  transition: transform 0.12s ease;
+}
+
+input[type="range"].studio-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.18);
+}
+
+/* Ultra-clean Monochrome Scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
