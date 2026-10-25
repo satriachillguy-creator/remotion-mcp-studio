@@ -206,11 +206,13 @@ export function executeMcpToolOnProject(
 
       if (Array.isArray(args.propsSchema) && args.propsSchema.length > 0) {
         next.propsSchema = args.propsSchema as PropSchemaField[];
+        const freshProps: Record<string, any> = {};
         for (const field of next.propsSchema) {
-          if (field.defaultValue !== undefined && next.propsValues[field.key] === undefined) {
-            next.propsValues[field.key] = field.defaultValue;
+          if (field.defaultValue !== undefined) {
+            freshProps[field.key] = field.defaultValue;
           }
         }
+        next.propsValues = freshProps;
         next.files["schema.json"] = {
           path: "schema.json",
           content: JSON.stringify(next.propsSchema, null, 2),

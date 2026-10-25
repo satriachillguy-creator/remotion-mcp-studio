@@ -32,6 +32,14 @@ import {
   User,
   ShieldCheck,
   Save,
+  Undo2,
+  Redo2,
+  PlusCircle,
+  Eye,
+  EyeOff,
+  FileText,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import {
   StudioProject,
@@ -114,12 +122,52 @@ class RemotionErrorBoundary extends React.Component<
 }
 
 const PRESET_COMMANDS = [
-  { label: "Editorial Campaign", prompt: "Buat video promo campaign dengan judul 'ARCHIVE EDITION'" },
-  { label: "Minimal Countdown 5s", prompt: "Buat animasi countdown timer 5 detik warna putih hitam" },
-  { label: "Telemetry 16:9", prompt: "Ubah ke template keynote telemetry 16:9" },
+  { label: "Flash Sale UMKM", prompt: "Ganti ke template promo flash sale umkm" },
+  { label: "Review Pembeli", prompt: "Ganti ke template ulasan testimoni pembeli" },
+  { label: "Editorial 9:16", prompt: "Ganti ke template editorial monokrom 9:16" },
+  { label: "Keynote 16:9", prompt: "Ubah ke template keynote telemetry 16:9" },
   { label: "Kinetic 1:1", prompt: "Ubah ke template kinetic type 1:1" },
-  { label: "Invert White Canvas", prompt: "Invert warna ke mode terang" },
+  { label: "Durasi 10s", prompt: "Ubah durasi jadi 10 detik 30 fps" },
 ];
+
+function renderMarkdownText(text: string) {
+  if (!text) return null;
+  const lines = text.split("\n");
+  return lines.map((line, lIdx) => {
+    const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
+    return (
+      <div key={lIdx} className={line.trim() === "" ? "h-2" : "leading-relaxed"}>
+        {parts.map((part, pIdx) => {
+          if (part.startsWith("**") && part.endsWith("**")) {
+            return (
+              <strong key={pIdx} className="font-semibold text-white">
+                {part.slice(2, -2)}
+              </strong>
+            );
+          }
+          if (part.startsWith("*") && part.endsWith("*")) {
+            return (
+              <em key={pIdx} className="italic text-neutral-300">
+                {part.slice(1, -1)}
+              </em>
+            );
+          }
+          if (part.startsWith("`") && part.endsWith("`")) {
+            return (
+              <code
+                key={pIdx}
+                className="px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 font-mono text-[11px] text-white"
+              >
+                {part.slice(1, -1)}
+              </code>
+            );
+          }
+          return <span key={pIdx}>{part}</span>;
+        })}
+      </div>
+    );
+  });
+}
 
 function formatSmpteTimecode(frame: number, fps: number): string {
   const totalSeconds = Math.floor(frame / fps);
@@ -208,8 +256,75 @@ export default function StudioApp() {
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState<boolean>(false);
   const [savedNotice, setSavedNotice] = useState<boolean>(false);
 
+  // Undo / Redo & Workspace Extras
+  const [history, setHistory] = useState<StudioProject[]>([project]);
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
+  const [showSafeZone, setShowSafeZone] = useState<boolean>(false);
+  const [codeWordWrap, setCodeWordWrap] = useState<boolean>(false);
+  const [mcpConnected, setMcpConnected] = useState<boolean>(true);
+
+  // Push next project state with undo/redo stack & autosave
+  const pushProjectState = useCallback((nextState: StudioProject) => {
+    setProject(nextState);
+    setHistory((prev) => {
+      const sliced = prev.slice(0, historyIndex + 1);
+      const nextStack = [...sliced, nextState];
+      if (nextStack.length > 30) nextStack.shift();
+      return nextStack;
+    });
+    setHistoryIndex((prev) => Math.min(prev + 1, 29));
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("kinetic_autosave_project_v2", JSON.stringify(nextState));
+      } catch {
+        // ignore quota
+      }
+    }
+  }, [historyIndex]);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      const target = history[historyIndex - 1];
+      setHistoryIndex((i) => i - 1);
+      setProject(target);
+    }
+  }, [historyIndex, history]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const target = history[historyIndex + 1];
+      setHistoryIndex((i) => i + 1);
+      setProject(target);
+    }
+  }, [historyIndex, history]);
+
+  const handleCreateBlankProject = () => {
+    if (confirm("Mulai proyek baru? Proyek yang belum disimpan ke akun akan direset.")) {
+      const blank = createInitialProject("swiss-editorial-reel");
+      blank.name = "Proyek Baru";
+      blank.version = 1;
+      pushProjectState(blank);
+    }
+  };
+
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // 1. Try autosave project restoration
+      try {
+        const autosaved = localStorage.getItem("kinetic_autosave_project_v2");
+        if (autosaved) {
+          const parsed = JSON.parse(autosaved);
+          if (parsed && parsed.files && parsed.videoConfig) {
+            setProject(parsed);
+            setHistory([parsed]);
+            setHistoryIndex(0);
+          }
+        }
+      } catch {
+        // ignore
+      }
+
       const savedModel = localStorage.getItem("kinetic_whisper_installed_model");
       if (savedModel === "Xenova/whisper-tiny" || savedModel === "Xenova/whisper-base") {
         setWhisperModelId(savedModel);
@@ -223,6 +338,8 @@ export default function StudioApp() {
         const userProj = loadProjectForGoogleUser(savedUser.email);
         if (userProj && userProj.files && userProj.videoConfig) {
           setProject(userProj);
+          setHistory([userProj]);
+          setHistoryIndex(0);
         }
       }
       setGoogleClientId(getSavedGoogleClientId());
@@ -236,6 +353,61 @@ export default function StudioApp() {
       saveProjectForGoogleUser(googleUser.email, project);
     }
   }, [project, googleUser]);
+
+  // Keyboard Shortcuts: Space (Play/Pause), Left/Right (Frame scrub), Ctrl+Z / Ctrl+Y (Undo/Redo)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl?.tagName === "INPUT" ||
+        activeEl?.tagName === "TEXTAREA" ||
+        activeEl?.tagName === "SELECT" ||
+        (activeEl as HTMLElement)?.isContentEditable;
+
+      // Ctrl + Z = Undo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey && !isInput) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Ctrl + Y or Ctrl + Shift + Z = Redo
+      if (
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y" && !isInput) ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z" && !isInput)
+      ) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      // Spacebar = Toggle Play/Pause
+      if (e.code === "Space" && !isInput) {
+        e.preventDefault();
+        togglePlay();
+        return;
+      }
+
+      // ArrowLeft = Frame -1 (-5 with Shift)
+      if (e.key === "ArrowLeft" && !isInput) {
+        e.preventDefault();
+        const delta = e.shiftKey ? 5 : 1;
+        seekToFrame(currentFrame - delta);
+        return;
+      }
+
+      // ArrowRight = Frame +1 (+5 with Shift)
+      if (e.key === "ArrowRight" && !isInput) {
+        e.preventDefault();
+        const delta = e.shiftKey ? 5 : 1;
+        seekToFrame(currentFrame + delta);
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleUndo, handleRedo, currentFrame, project.videoConfig.durationInFrames]);
 
   // In-Browser TSX Compilation
   const mainCode = project.files["MainVideo.tsx"]?.content || "";
@@ -477,6 +649,29 @@ export default function StudioApp() {
 
     setShowWhisperModal(false);
     seekToFrame(0);
+  };
+
+  const handleExportSubtitleSrt = () => {
+    if (!transcriptionResult || transcriptionResult.chunks.length === 0) return;
+    let srtText = "";
+    transcriptionResult.chunks.forEach((chunk, index) => {
+      const startSec = chunk.timestamp[0] ?? 0;
+      const endSec = chunk.timestamp[1] ?? (startSec + 2);
+      const fmtTime = (s: number) => {
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = Math.floor(s % 60);
+        const ms = Math.floor((s % 1) * 1000);
+        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
+      };
+      srtText += `${index + 1}\n${fmtTime(startSec)} --> ${fmtTime(endSec)}\n${chunk.text.trim()}\n\n`;
+    });
+    const blob = new Blob([srtText], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${project.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_subtitles.srt`;
+    a.click();
   };
 
   const handleSendPrompt = async (customPrompt?: string) => {
@@ -736,18 +931,21 @@ export default function StudioApp() {
         </button>
       </div>
 
-      {/* Minimalist Prompt Pills */}
-      <div className="px-4 py-2.5 border-b border-neutral-900 flex gap-1.5 overflow-x-auto no-scrollbar">
-        {PRESET_COMMANDS.map((cmd, idx) => (
-          <button
-            key={idx}
-            onClick={() => handleSendPrompt(cmd.prompt)}
-            disabled={isAiLoading}
-            className="shrink-0 text-[11px] px-3 py-1 rounded-full bg-neutral-950 hover:bg-white hover:text-black border border-neutral-800 text-neutral-300 transition"
-          >
-            {cmd.label}
-          </button>
-        ))}
+      {/* Minimalist Prompt Pills with Scroll Indicator */}
+      <div className="relative border-b border-neutral-900">
+        <div className="px-4 py-2.5 flex gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
+          {PRESET_COMMANDS.map((cmd, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleSendPrompt(cmd.prompt)}
+              disabled={isAiLoading}
+              className="shrink-0 text-[11px] px-3 py-1 rounded-full bg-neutral-950 hover:bg-white hover:text-black border border-neutral-800 text-neutral-300 transition"
+            >
+              {cmd.label}
+            </button>
+          ))}
+        </div>
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-black to-transparent" />
       </div>
 
       {/* Message Stream */}
@@ -766,7 +964,7 @@ export default function StudioApp() {
                   : "bg-[#0A0A0A] border-neutral-800 text-neutral-200"
               }`}
             >
-              <div className="whitespace-pre-wrap">{m.content}</div>
+              <div>{renderMarkdownText(m.content)}</div>
 
               {m.toolCalls && m.toolCalls.length > 0 && (
                 <div className="mt-2.5 pt-2 border-t border-neutral-800 space-y-1">
@@ -1069,26 +1267,36 @@ export default function StudioApp() {
             ))}
           </div>
 
-          {compiled.error ? (
+          <div className="flex items-center gap-2">
             <button
-              onClick={() =>
-                handleSendPrompt("Perbaiki error kompilasi TSX pada kode saat ini")
-              }
-              className="text-[10px] font-mono px-2.5 py-1 rounded-md bg-white text-black font-semibold"
+              onClick={() => setCodeWordWrap((v) => !v)}
+              className="text-[10px] font-mono px-2 py-0.5 rounded border border-neutral-800 text-neutral-400 hover:text-white transition"
+              title="Toggle Word Wrap"
             >
-              Restore AST
+              {codeWordWrap ? "Wrap: ON" : "Wrap: OFF"}
             </button>
-          ) : (
-            <span className="flex items-center gap-1.5 text-[10px] font-mono text-neutral-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-white" />
-              Compiled
-            </span>
-          )}
+
+            {compiled.error ? (
+              <button
+                onClick={() =>
+                  handleSendPrompt("Perbaiki error kompilasi TSX pada kode saat ini")
+                }
+                className="text-[10px] font-mono px-2.5 py-1 rounded-md bg-white text-black font-semibold"
+              >
+                Restore AST
+              </button>
+            ) : (
+              <span className="flex items-center gap-1.5 text-[10px] font-mono text-neutral-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                Compiled
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 min-h-0 flex overflow-hidden relative">
-          <div className="w-10 py-3 bg-[#050505] border-r border-neutral-900 text-right pr-2.5 select-none font-mono text-[11px] leading-[1.6] text-neutral-600 overflow-hidden">
-            {Array.from({ length: Math.min(lineCount, 400) }).map((_, i) => (
+          <div className="w-11 py-3 bg-[#050505] border-r border-neutral-900 text-right pr-2.5 select-none font-mono text-[11px] leading-[1.6] text-neutral-600 overflow-hidden shrink-0">
+            {Array.from({ length: Math.min(lineCount, 600) }).map((_, i) => (
               <div key={i}>{i + 1}</div>
             ))}
           </div>
@@ -1111,8 +1319,22 @@ export default function StudioApp() {
               };
               syncProjectWithServer(nextProj);
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Tab") {
+                e.preventDefault();
+                const target = e.currentTarget;
+                const start = target.selectionStart;
+                const end = target.selectionEnd;
+                const val = target.value;
+                target.value = val.substring(0, start) + "  " + val.substring(end);
+                target.selectionStart = target.selectionEnd = start + 2;
+                target.dispatchEvent(new Event("input", { bubbles: true }));
+              }
+            }}
             spellCheck={false}
-            className="flex-1 w-full bg-black text-neutral-200 font-mono text-[11.5px] leading-[1.6] p-3 outline-none resize-none selection:bg-white selection:text-black"
+            className={`flex-1 w-full bg-black text-neutral-200 font-mono text-[11.5px] leading-[1.6] p-3 outline-none resize-none selection:bg-white selection:text-black ${
+              codeWordWrap ? "whitespace-pre-wrap break-words" : "whitespace-pre overflow-x-auto"
+            }`}
           />
         </div>
 
@@ -1256,7 +1478,7 @@ export default function StudioApp() {
                 templateId: e.target.value,
               })
             }
-            className="bg-[#0A0A0A] border border-neutral-800 hover:border-neutral-600 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none max-w-[165px] sm:max-w-xs transition"
+            className="bg-[#0A0A0A] border border-neutral-800 hover:border-neutral-600 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none max-w-[150px] sm:max-w-[210px] transition"
           >
             {STUDIO_TEMPLATES.map((t) => (
               <option key={t.id} value={t.id}>
@@ -1264,34 +1486,92 @@ export default function StudioApp() {
               </option>
             ))}
           </select>
+
+          {/* New Project & Undo/Redo Controls */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleCreateBlankProject}
+              className="p-1.5 rounded-lg border border-neutral-800 bg-[#0A0A0A] text-neutral-400 hover:text-white hover:border-neutral-600 transition"
+              title="Mulai Proyek Baru / Reset Canvas"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleUndo}
+              disabled={historyIndex <= 0}
+              className="p-1.5 rounded-lg border border-neutral-800 bg-[#0A0A0A] text-neutral-400 hover:text-white disabled:opacity-25 disabled:pointer-events-none transition"
+              title="Undo Perubahan (Ctrl+Z)"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={historyIndex >= history.length - 1}
+              className="p-1.5 rounded-lg border border-neutral-800 bg-[#0A0A0A] text-neutral-400 hover:text-white disabled:opacity-25 disabled:pointer-events-none transition"
+              title="Redo Perubahan (Ctrl+Y)"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
-        {/* Center: Viewport Mode Switcher */}
-        <div className="hidden lg:flex items-center rounded-lg border border-neutral-800 bg-[#080808] p-0.5">
-          <button
-            onClick={() => setLayoutMode("auto")}
-            className={`px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition ${
-              layoutMode === "auto"
-                ? "bg-white text-black"
-                : "text-neutral-400 hover:text-white"
-            }`}
-          >
-            <Monitor className="w-3.5 h-3.5" /> Desktop
-          </button>
-          <button
-            onClick={() => setLayoutMode("mobile-sim")}
-            className={`px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition ${
-              layoutMode === "mobile-sim"
-                ? "bg-white text-black"
-                : "text-neutral-400 hover:text-white"
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" /> Mobile
-          </button>
+        {/* Center: Viewport Mode Switcher & MCP Status */}
+        <div className="hidden lg:flex items-center gap-3">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#080808] border border-neutral-800 text-[10px] font-mono">
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                compiled.error
+                  ? "bg-red-400"
+                  : mcpConnected
+                  ? "bg-emerald-400 animate-pulse"
+                  : "bg-neutral-600"
+              }`}
+            />
+            <span className={compiled.error ? "text-red-400" : "text-neutral-400"}>
+              {compiled.error ? "AST COMPILER ERROR" : "MCP SERVER: ONLINE"}
+            </span>
+          </div>
+
+          <div className="flex items-center rounded-lg border border-neutral-800 bg-[#080808] p-0.5">
+            <button
+              onClick={() => setLayoutMode("auto")}
+              className={`px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition ${
+                layoutMode === "auto"
+                  ? "bg-white text-black"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <Monitor className="w-3.5 h-3.5" /> Desktop
+            </button>
+            <button
+              onClick={() => setLayoutMode("mobile-sim")}
+              className={`px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition ${
+                layoutMode === "mobile-sim"
+                  ? "bg-white text-black"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" /> Mobile
+            </button>
+          </div>
         </div>
 
-        {/* Right: Actions (Install Whisper, Engine, Export MP4, Google Login) */}
+        {/* Right: Actions (Safe Zone, Whisper, Engine, Export, Google Login) */}
         <div className="flex items-center gap-2">
+          {project.videoConfig.aspectRatio === "9:16" && (
+            <button
+              onClick={() => setShowSafeZone((v) => !v)}
+              className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono transition flex items-center gap-1.5 ${
+                showSafeZone
+                  ? "bg-white text-black border-white font-semibold"
+                  : "bg-[#0A0A0A] border-neutral-800 text-neutral-400 hover:text-white"
+              }`}
+              title="Toggle Safe Zone TikTok / Reels / Shorts"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span className="hidden xl:inline">Safe Zone</span>
+            </button>
+          )}
           <button
             onClick={() => setShowWhisperModal(true)}
             className={`px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 text-xs font-medium ${
@@ -1462,14 +1742,11 @@ export default function StudioApp() {
           <div className="h-[44%] shrink-0 flex flex-col bg-studio-dots border-b border-neutral-900 relative">
             <div className="flex-1 min-h-0 flex items-center justify-center p-3 relative overflow-hidden">
               <div
-                className="relative flex items-center justify-center w-full h-full"
+                className="relative flex items-center justify-center max-w-full max-h-full"
                 style={{
-                  maxWidth:
-                    project.videoConfig.aspectRatio === "9:16"
-                      ? "190px"
-                      : project.videoConfig.aspectRatio === "1:1"
-                      ? "230px"
-                      : "100%",
+                  aspectRatio: `${project.videoConfig.width} / ${project.videoConfig.height}`,
+                  height: project.videoConfig.aspectRatio === "9:16" ? "100%" : "auto",
+                  width: project.videoConfig.aspectRatio === "16:9" ? "100%" : "auto",
                 }}
               >
                 <RemotionErrorBoundary
@@ -1496,7 +1773,6 @@ export default function StudioApp() {
                     style={{
                       width: "100%",
                       height: "100%",
-                      maxHeight: "100%",
                       border: "1px solid #262626",
                     }}
                     controls={false}
@@ -1504,6 +1780,24 @@ export default function StudioApp() {
                     autoPlay
                   />
                 </RemotionErrorBoundary>
+
+                {/* Safe Zone Overlay for 9:16 Vertical Video */}
+                {showSafeZone && project.videoConfig.aspectRatio === "9:16" && (
+                  <div className="pointer-events-none absolute inset-0 z-20 flex flex-col justify-between border-2 border-dashed border-red-500/40">
+                    <div className="h-[14%] bg-red-500/10 border-b border-dashed border-red-500/40 p-1.5 flex justify-between text-[8px] font-mono text-red-300">
+                      <span>HEADER SAFE ZONE</span>
+                      <span>14%</span>
+                    </div>
+                    <div className="flex-1 flex justify-end">
+                      <div className="w-[18%] bg-red-500/10 border-l border-dashed border-red-500/40 p-1 flex items-center justify-center text-[8px] font-mono text-red-300 text-center leading-tight">
+                        TOMBOL<br />ACTION
+                      </div>
+                    </div>
+                    <div className="h-[22%] bg-red-500/10 border-t border-dashed border-red-500/40 p-1.5 flex flex-col justify-end text-[8px] font-mono text-red-300">
+                      <span>CAPTION SAFE ZONE (22%)</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1583,21 +1877,15 @@ export default function StudioApp() {
                 </div>
 
                 <div
-                  className="flex items-center justify-center w-full h-full"
-                  style={{
-                    maxWidth:
-                      project.videoConfig.aspectRatio === "9:16"
-                        ? "280px"
-                        : project.videoConfig.aspectRatio === "1:1"
-                        ? "370px"
-                        : "100%",
-                  }}
+                  className="flex items-center justify-center w-full h-full p-2 relative overflow-hidden"
                 >
                   <div
                     ref={playerDomRef}
-                    className="w-full relative shadow-[0_24px_70px_rgba(0,0,0,0.9)] border border-neutral-800"
+                    className="relative max-w-full max-h-full flex items-center justify-center shadow-[0_24px_70px_rgba(0,0,0,0.9)] border border-neutral-800"
                     style={{
                       aspectRatio: `${project.videoConfig.width} / ${project.videoConfig.height}`,
+                      height: project.videoConfig.aspectRatio === "9:16" ? "100%" : "auto",
+                      width: project.videoConfig.aspectRatio === "16:9" ? "100%" : "auto",
                     }}
                   >
                     <RemotionErrorBoundary
@@ -1630,6 +1918,24 @@ export default function StudioApp() {
                         autoPlay
                       />
                     </RemotionErrorBoundary>
+
+                    {/* Safe Zone Overlay for 9:16 Vertical Video */}
+                    {showSafeZone && project.videoConfig.aspectRatio === "9:16" && (
+                      <div className="pointer-events-none absolute inset-0 z-20 flex flex-col justify-between border-2 border-dashed border-red-500/40">
+                        <div className="h-[14%] bg-red-500/10 border-b border-dashed border-red-500/40 p-2 flex justify-between text-[10px] font-mono text-red-300">
+                          <span>HEADER SAFE ZONE (TIKTOK / REELS)</span>
+                          <span>14%</span>
+                        </div>
+                        <div className="flex-1 flex justify-end">
+                          <div className="w-[18%] bg-red-500/10 border-l border-dashed border-red-500/40 p-1 flex items-center justify-center text-[9px] font-mono text-red-300 text-center leading-tight">
+                            ACTION<br />BUTTONS
+                          </div>
+                        </div>
+                        <div className="h-[22%] bg-red-500/10 border-t border-dashed border-red-500/40 p-2 flex flex-col justify-end text-[10px] font-mono text-red-300">
+                          <span>CAPTION SAFE ZONE (22%)</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1821,10 +2127,10 @@ export default function StudioApp() {
                     className="w-full bg-black border border-neutral-800 rounded-lg px-2.5 py-2 text-xs text-white outline-none"
                   >
                     <option value="Xenova/whisper-tiny">
-                      whisper-tiny (~40 MB • Fast)
+                      whisper-tiny (~75 MB • Super Cepat)
                     </option>
                     <option value="Xenova/whisper-base">
-                      whisper-base (~75 MB • Accurate)
+                      whisper-base (~145 MB • Akurat Bahasa Indonesia)
                     </option>
                   </select>
                 </div>
@@ -1958,13 +2264,22 @@ export default function StudioApp() {
                   ))}
                 </div>
 
-                <button
-                  onClick={handleApplyTranscriptToTimeline}
-                  className="w-full py-2.5 px-4 rounded-lg bg-white hover:bg-neutral-200 text-black font-medium text-xs flex items-center justify-center gap-2 transition"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Sync Captions to Timeline</span>
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={handleApplyTranscriptToTimeline}
+                    className="py-2.5 px-3 rounded-lg bg-white hover:bg-neutral-200 text-black font-medium text-xs flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Sync Timeline</span>
+                  </button>
+                  <button
+                    onClick={handleExportSubtitleSrt}
+                    className="py-2.5 px-3 rounded-lg bg-neutral-900 hover:bg-white hover:text-black border border-neutral-700 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Ekspor (.SRT)</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

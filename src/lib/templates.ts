@@ -270,15 +270,15 @@ export default function MinimalistEditorialComposition(props) {
                   fontFamily: 'monospace',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-                  <span style={{ fontSize: 20, color: accentColor }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 20, minWidth: 0 }}>
+                  <span style={{ fontSize: 20, color: accentColor, fontFamily: 'monospace' }}>
                     {row.idx}
                   </span>
-                  <span style={{ fontSize: 22, color: accentColor }}>
+                  <span style={{ fontSize: 22, color: accentColor, letterSpacing: 1, marginRight: 16 }}>
                     {row.label}
                   </span>
                 </div>
-                <span style={{ fontSize: 22, fontWeight: 600, color: primaryColor, letterSpacing: 1 }}>
+                <span style={{ fontSize: 22, fontWeight: 700, color: primaryColor, letterSpacing: 1, textAlign: 'right', flexShrink: 0 }}>
                   {row.value}
                 </span>
               </div>
@@ -700,6 +700,439 @@ export default function KineticMonochromeComposition(props) {
       >
         <span>1080×1080 // MONO</span>
         <span style={{ color: primaryColor }}>[{activeWordIndex + 1}/{words.length}]</span>
+      </div>
+    </AbsoluteFill>
+  );
+}
+`,
+  },
+  {
+    id: "umkm-promo-flashsale",
+    name: "04 / Promo Flash Sale UMKM",
+    badge: "9:16 Flash Sale",
+    description:
+      "Video promo penjualan untuk TikTok Shop, Shopee & Reels. Menampilkan badge diskon, harga coret, dan animasi tombol beli.",
+    videoConfig: {
+      width: 1080,
+      height: 1920,
+      fps: 30,
+      durationInFrames: 150,
+      aspectRatio: "9:16",
+    },
+    propsSchema: [
+      { key: "productName", label: "Nama Produk", type: "text", defaultValue: "OVERSIZED HEAVYWEIGHT TEE" },
+      { key: "discountTag", label: "Label Diskon", type: "text", defaultValue: "FLASH SALE 50% OFF" },
+      { key: "normalPrice", label: "Harga Normal", type: "text", defaultValue: "Rp 199.000" },
+      { key: "promoPrice", label: "Harga Promo", type: "text", defaultValue: "Rp 99.000" },
+      { key: "storeName", label: "Nama Toko", type: "text", defaultValue: "OFFICIAL STORE // TIKTOK SHOP" },
+      { key: "ctaText", label: "Tombol Aksi", type: "text", defaultValue: "CHECKOUT DI KERANJANG KUNING" },
+      { key: "primaryColor", label: "Warna Utama", type: "color", defaultValue: "#FFFFFF" },
+      { key: "accentColor", label: "Warna Aksen", type: "color", defaultValue: "#A3A3A3" },
+      { key: "bgColor", label: "Warna Background", type: "color", defaultValue: "#000000" },
+    ],
+    propsValues: {
+      productName: "OVERSIZED HEAVYWEIGHT TEE",
+      discountTag: "FLASH SALE 50% OFF",
+      normalPrice: "Rp 199.000",
+      promoPrice: "Rp 99.000",
+      storeName: "OFFICIAL STORE // TIKTOK SHOP",
+      ctaText: "CHECKOUT DI KERANJANG KUNING",
+      primaryColor: "#FFFFFF",
+      accentColor: "#A3A3A3",
+      bgColor: "#000000",
+    },
+    sequences: [
+      { id: "seq-badge", name: "Badge Diskon Flash Sale", from: 0, durationInFrames: 150, color: "#FFFFFF" },
+      { id: "seq-prod", name: "Judul Produk Kinetik", from: 10, durationInFrames: 140, color: "#D4D4D4" },
+      { id: "seq-price", name: "Coret Harga & Harga Hemat", from: 25, durationInFrames: 125, color: "#FFFFFF" },
+      { id: "seq-cta", name: "Tombol Keranjang Kuning", from: 45, durationInFrames: 105, color: "#A3A3A3" },
+    ],
+    code: `import React from 'react';
+import {
+  AbsoluteFill,
+  Sequence,
+  useCurrentFrame,
+  useVideoConfig,
+  spring,
+  interpolate,
+} from 'remotion';
+
+export default function UmkmPromoFlashSaleComposition(props) {
+  const {
+    productName = "OVERSIZED HEAVYWEIGHT TEE",
+    discountTag = "FLASH SALE 50% OFF",
+    normalPrice = "Rp 199.000",
+    promoPrice = "Rp 99.000",
+    storeName = "OFFICIAL STORE // TIKTOK SHOP",
+    ctaText = "CHECKOUT DI KERANJANG KUNING",
+    primaryColor = "#FFFFFF",
+    accentColor = "#A3A3A3",
+    bgColor = "#000000",
+  } = props;
+
+  const frame = useCurrentFrame();
+  const { fps, durationInFrames } = useVideoConfig();
+
+  const badgeSpring = spring({ frame, fps, config: { damping: 14, stiffness: 180 } });
+  const titleSpring = spring({ frame: frame - 10, fps, config: { damping: 18, stiffness: 140 } });
+  const priceSpring = spring({ frame: frame - 25, fps, config: { damping: 16, stiffness: 160 } });
+  const ctaSpring = spring({ frame: frame - 45, fps, config: { damping: 15, stiffness: 150 } });
+
+  const progress = interpolate(frame, [0, durationInFrames - 1], [0, 100], {
+    extrapolateRight: 'clamp',
+  });
+
+  return (
+    <AbsoluteFill
+      style={{
+        backgroundColor: bgColor,
+        color: primaryColor,
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+        padding: 64,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+      }}
+    >
+      {/* Header Store & Timer */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottom: \`1px solid rgba(255,255,255,0.18)\`,
+          paddingBottom: 22,
+          fontFamily: 'monospace',
+          fontSize: 20,
+          letterSpacing: 2,
+        }}
+      >
+        <span style={{ color: accentColor }}>{storeName}</span>
+        <span style={{ color: primaryColor, fontWeight: 700 }}>LIVE PROMO</span>
+      </div>
+
+      {/* Main Flash Sale Body */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 36, marginTop: 40 }}>
+        {/* Flash Sale Tag */}
+        <Sequence from={0} durationInFrames={150} name="Badge Diskon">
+          <div
+            style={{
+              display: 'inline-flex',
+              alignSelf: 'flex-start',
+              padding: '12px 28px',
+              borderRadius: 999,
+              backgroundColor: primaryColor,
+              color: bgColor,
+              fontWeight: 800,
+              fontSize: 24,
+              letterSpacing: 3,
+              transform: \`scale(\${badgeSpring})\`,
+              transformOrigin: 'left center',
+            }}
+          >
+            {discountTag}
+          </div>
+        </Sequence>
+
+        {/* Product Name */}
+        <Sequence from={10} durationInFrames={140} name="Nama Produk">
+          <h1
+            style={{
+              fontSize: 84,
+              fontWeight: 900,
+              lineHeight: 0.96,
+              letterSpacing: -3,
+              textTransform: 'uppercase',
+              margin: 0,
+              transform: \`translateY(\${(1 - titleSpring) * 40}px)\`,
+              opacity: titleSpring,
+            }}
+          >
+            {productName}
+          </h1>
+        </Sequence>
+
+        {/* Price Tag with Strikethrough */}
+        <Sequence from={25} durationInFrames={125} name="Harga Coret & Promo">
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              padding: '28px 0',
+              borderTop: '1px solid rgba(255,255,255,0.14)',
+              borderBottom: '1px solid rgba(255,255,255,0.14)',
+              transform: \`translateY(\${(1 - priceSpring) * 30}px)\`,
+              opacity: priceSpring,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+              <span style={{ fontSize: 28, color: accentColor, textDecoration: 'line-through' }}>
+                {normalPrice}
+              </span>
+              <span
+                style={{
+                  fontSize: 16,
+                  fontFamily: 'monospace',
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  color: accentColor,
+                }}
+              >
+                HEMAT
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: 92,
+                fontWeight: 900,
+                color: primaryColor,
+                letterSpacing: -2,
+                fontFamily: 'monospace',
+                lineHeight: 1,
+              }}
+            >
+              {promoPrice}
+            </div>
+          </div>
+        </Sequence>
+      </div>
+
+      {/* Footer CTA & Progress */}
+      <Sequence from={45} durationInFrames={105} name="Tombol Checkout">
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 20,
+            transform: \`translateY(\${(1 - ctaSpring) * 20}px)\`,
+            opacity: ctaSpring,
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              padding: '28px 24px',
+              backgroundColor: primaryColor,
+              color: bgColor,
+              borderRadius: 18,
+              textAlign: 'center',
+              fontWeight: 800,
+              fontSize: 28,
+              letterSpacing: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 14,
+              boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+            }}
+          >
+            <span>👉</span>
+            <span>{ctaText}</span>
+          </div>
+
+          <div
+            style={{
+              width: '100%',
+              height: 4,
+              backgroundColor: 'rgba(255,255,255,0.16)',
+              position: 'relative',
+            }}
+          >
+            <div
+              style={{
+                width: \`\${progress}%\`,
+                height: '100%',
+                backgroundColor: primaryColor,
+              }}
+            />
+          </div>
+        </div>
+      </Sequence>
+    </AbsoluteFill>
+  );
+}
+`,
+  },
+  {
+    id: "umkm-review-testimoni",
+    name: "05 / Testimoni & Review UMKM",
+    badge: "9:16 Testimoni",
+    description:
+      "Video ulasan kepuasan pembeli dengan rating bintang 5, kutipan testimoni, dan lencana pembeli terverifikasi.",
+    videoConfig: {
+      width: 1080,
+      height: 1920,
+      fps: 30,
+      durationInFrames: 150,
+      aspectRatio: "9:16",
+    },
+    propsSchema: [
+      { key: "customerName", label: "Nama Pembeli", type: "text", defaultValue: "Rian Pratama (@rian.p)" },
+      { key: "customerReview", label: "Kutipan Review", type: "text", defaultValue: "Jujur bahan bajunya tebel banget dan adem! Jahitannya rapi, pengiriman cuma 1 hari sampai. Bakal repeat order lagi sih!" },
+      { key: "productName", label: "Produk Dibeli", type: "text", defaultValue: "Heavyweight Boxy Tee (Size L)" },
+      { key: "ratingScore", label: "Rating Bintang", type: "text", defaultValue: "★★★★★ (5.0 / 5.0)" },
+      { key: "verifiedBadge", label: "Lencana Verifikasi", type: "text", defaultValue: "VERIFIED BUYER // PESANAN SELESAI" },
+      { key: "primaryColor", label: "Warna Utama", type: "color", defaultValue: "#FFFFFF" },
+      { key: "accentColor", label: "Warna Aksen", type: "color", defaultValue: "#A3A3A3" },
+      { key: "bgColor", label: "Warna Background", type: "color", defaultValue: "#000000" },
+    ],
+    propsValues: {
+      customerName: "Rian Pratama (@rian.p)",
+      customerReview: "Jujur bahan bajunya tebel banget dan adem! Jahitannya rapi, pengiriman cuma 1 hari sampai. Bakal repeat order lagi sih!",
+      productName: "Heavyweight Boxy Tee (Size L)",
+      ratingScore: "★★★★★ (5.0 / 5.0)",
+      verifiedBadge: "VERIFIED BUYER // PESANAN SELESAI",
+      primaryColor: "#FFFFFF",
+      accentColor: "#A3A3A3",
+      bgColor: "#000000",
+    },
+    sequences: [
+      { id: "seq-stars", name: "Rating 5 Bintang", from: 0, durationInFrames: 150, color: "#FFFFFF" },
+      { id: "seq-quote", name: "Kutipan Testimoni", from: 15, durationInFrames: 135, color: "#D4D4D4" },
+      { id: "seq-buyer", name: "Identitas Pembeli", from: 35, durationInFrames: 115, color: "#FFFFFF" },
+      { id: "seq-badge", name: "Lencana Pembeli Terverifikasi", from: 55, durationInFrames: 95, color: "#A3A3A3" },
+    ],
+    code: `import React from 'react';
+import {
+  AbsoluteFill,
+  Sequence,
+  useCurrentFrame,
+  useVideoConfig,
+  spring,
+} from 'remotion';
+
+export default function UmkmReviewTestimoniComposition(props) {
+  const {
+    customerName = "Rian Pratama (@rian.p)",
+    customerReview = "Jujur bahan bajunya tebel banget dan adem! Jahitannya rapi, pengiriman cuma 1 hari sampai. Bakal repeat order lagi sih!",
+    productName = "Heavyweight Boxy Tee (Size L)",
+    ratingScore = "★★★★★ (5.0 / 5.0)",
+    verifiedBadge = "VERIFIED BUYER // PESANAN SELESAI",
+    primaryColor = "#FFFFFF",
+    accentColor = "#A3A3A3",
+    bgColor = "#000000",
+  } = props;
+
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  const starSpring = spring({ frame, fps, config: { damping: 14, stiffness: 180 } });
+  const quoteSpring = spring({ frame: frame - 15, fps, config: { damping: 18, stiffness: 130 } });
+  const userSpring = spring({ frame: frame - 35, fps, config: { damping: 16, stiffness: 150 } });
+
+  return (
+    <AbsoluteFill
+      style={{
+        backgroundColor: bgColor,
+        color: primaryColor,
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+        padding: 72,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+      }}
+    >
+      {/* Top Header */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottom: '1px solid rgba(255,255,255,0.18)',
+          paddingBottom: 24,
+          fontFamily: 'monospace',
+          fontSize: 20,
+          color: accentColor,
+        }}
+      >
+        <span>CUSTOMER REVIEW</span>
+        <span style={{ color: primaryColor, fontWeight: 700 }}>100% REAL</span>
+      </div>
+
+      {/* Main Review Card */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 32,
+          padding: '48px 40px',
+          borderRadius: 24,
+          backgroundColor: '#0A0A0A',
+          border: '1px solid rgba(255,255,255,0.18)',
+        }}
+      >
+        {/* Rating Stars */}
+        <Sequence from={0} durationInFrames={150} name="Rating Stars">
+          <div
+            style={{
+              fontSize: 36,
+              color: primaryColor,
+              letterSpacing: 6,
+              transform: \`scale(\${starSpring})\`,
+              transformOrigin: 'left center',
+            }}
+          >
+            {ratingScore}
+          </div>
+        </Sequence>
+
+        {/* Quote */}
+        <Sequence from={15} durationInFrames={135} name="Review Text">
+          <p
+            style={{
+              fontSize: 44,
+              fontWeight: 500,
+              lineHeight: 1.35,
+              color: primaryColor,
+              margin: 0,
+              transform: \`translateY(\${(1 - quoteSpring) * 30}px)\`,
+              opacity: quoteSpring,
+            }}
+          >
+            "{customerReview}"
+          </p>
+        </Sequence>
+
+        {/* Customer Details */}
+        <Sequence from={35} durationInFrames={115} name="Customer Details">
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              borderTop: '1px solid rgba(255,255,255,0.12)',
+              paddingTop: 24,
+              transform: \`translateY(\${(1 - userSpring) * 20}px)\`,
+              opacity: userSpring,
+            }}
+          >
+            <span style={{ fontSize: 26, fontWeight: 700, color: primaryColor }}>
+              {customerName}
+            </span>
+            <span style={{ fontSize: 20, color: accentColor, fontFamily: 'monospace' }}>
+              Beli: {productName}
+            </span>
+          </div>
+        </Sequence>
+      </div>
+
+      {/* Bottom Verified Badge */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          fontFamily: 'monospace',
+          fontSize: 20,
+          color: accentColor,
+          borderTop: '1px solid rgba(255,255,255,0.18)',
+          paddingTop: 24,
+        }}
+      >
+        <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: primaryColor }} />
+        <span>{verifiedBadge}</span>
       </div>
     </AbsoluteFill>
   );
